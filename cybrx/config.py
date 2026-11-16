@@ -35,6 +35,14 @@ def _platform_deny() -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...
 
 PLATFORM_DENY_NETWORKS = _platform_deny()
 
+# The platform's own domain names, from CYBRX_PLATFORM_DENY_HOSTNAMES (comma-separated).
+# A name also protects its subdomains: "cybrx.example" blocks "api.cybrx.example".
+PLATFORM_DENY_HOSTNAMES: tuple[str, ...] = tuple(
+    h.strip().rstrip(".").lower()
+    for h in os.environ.get("CYBRX_PLATFORM_DENY_HOSTNAMES", "").split(",")
+    if h.strip()
+)
+
 # Largest CIDR a single target may cover (a /16 in IPv4). Bigger ranges are refused.
 MAX_CIDR_ADDRESSES: int = int(os.environ.get("CYBRX_MAX_CIDR_ADDRESSES", "65536"))
 

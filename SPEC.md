@@ -44,6 +44,7 @@ A group can hold targets for all three modules.
 | D-07 | SQLite in Phase 1, PostgreSQL from Phase 2 (same schema) | Decided |
 | D-08 | PCI DSS module, governance portal and pentest portal are **out of scope** for this project; design the data model so they can plug in later (`compliance_tags`) | Decided |
 | D-09 | Internal scanning through an **outbound-only agent** installed in the customer network | Decided |
+| D-10 | **Strict IP scope:** allow-lists hold IPs/CIDRs only; denied hostnames protect their resolved IPs (`docs/decisions/ADR-002-scope-policy.md`) | Decided |
 
 New decisions are added here (or as `docs/decisions/ADR-NNN.md`) before code depends on them.
 

@@ -60,7 +60,9 @@ class Target:
 class Scope:
     """What a group is authorised to scan, and when (CONVENTIONS.md §4).
 
-    allow / deny hold IPs, CIDRs or hostnames. Example lab scope:
+    allow holds IPs and CIDRs only (ADR-002): a hostname target is allowed only when every
+    address it resolves to is inside these networks. deny holds IPs, CIDRs or hostnames;
+    denied hostnames are resolved, so their addresses are protected too. Example lab scope:
         Scope(allow=["192.168.56.0/24"], deny=["192.168.56.1", "192.168.56.100"],
               starts_at=..., ends_at=..., authorised_by="Lab owner", authorised_at=...)
     """
@@ -80,6 +82,12 @@ class Scope:
             raise ValueError("authorised_by is required (SBD-05)")
         if self.ends_at <= self.starts_at:
             raise ValueError("ends_at must be after starts_at")
+        _, allow_hosts = _split_entries(self.allow)
+        if allow_hosts:
+            raise ValueError(
+                f"allow-list must contain IPs/CIDRs only, got hostnames {sorted(allow_hosts)} "
+                "(hostname authorisation needs ownership verification and IP pinning: ADR-002)"
+            )
 
 
 @dataclass(frozen=True)
@@ -124,11 +132,15 @@ def parse_target(raw: str) -> Target:
             net = ipaddress.ip_network(value, strict=False)
         except ValueError as exc:
             raise InvalidTarget(f"invalid CIDR: {exc}") from None
+        _reject_embedded_ipv4(net)
         return Target(raw=value, kind="cidr", host=str(net))
     try:
-        return Target(raw=value, kind="ip", host=str(ipaddress.ip_address(value)))
+        ip = ipaddress.ip_address(value)
     except ValueError:
-        pass
+        ip = None
+    if ip is not None:
+        _reject_embedded_ipv4(ip)
+        return Target(raw=value, kind="ip", host=str(ip))
     if _HOSTNAME_RE.match(value) and not value.replace(".", "").isdigit():
         return Target(raw=value, kind="hostname", host=value.rstrip(".").lower())
     raise InvalidTarget("not an IP, CIDR, hostname or http/https URL")
@@ -148,12 +160,61 @@ def _parse_url(value: str) -> Target:
     if not host:
         raise InvalidTarget("URL has no host")
     try:
-        return Target(raw=value, kind="url", host=str(ipaddress.ip_address(host)))
+        ip = ipaddress.ip_address(host)
     except ValueError:
-        pass
+        ip = None
+    if ip is not None:
+        _reject_embedded_ipv4(ip)
+        return Target(raw=value, kind="url", host=str(ip))
     if not _HOSTNAME_RE.match(host):
         raise InvalidTarget("URL host is not a valid hostname")
     return Target(raw=value, kind="url", host=host.rstrip(".").lower())
+
+
+# IPv6 forms that carry an IPv4 address inside them. Targets must use the plain IPv4 form,
+# so a protected IPv4 address cannot be reached through an IPv6 spelling (finding 3).
+_EMBEDDED_IPV4_NETS = tuple(
+    ipaddress.ip_network(n)
+    for n in ("::ffff:0:0/96", "2002::/16", "2001::/32", "64:ff9b::/96", "64:ff9b:1::/48")
+)
+
+
+def _reject_embedded_ipv4(value: IPAddress | IPNetwork) -> None:
+    """Raise InvalidTarget for IPv4-mapped, 6to4, Teredo or NAT64 IPv6 addresses/ranges.
+
+    Example: "::ffff:127.0.0.1" and "::ffff:127.0.0.1/128" -> InvalidTarget ("use the IPv4 form").
+    """
+    if value.version != 6:
+        return
+    for net in _EMBEDDED_IPV4_NETS:
+        inside = value in net if isinstance(value, ipaddress.IPv6Address) else value.overlaps(net)
+        if inside:
+            raise InvalidTarget(f"IPv6 form that embeds an IPv4 address ({net}); use the IPv4 form")
+
+
+def _platform_hostname(hostname: str) -> bool:
+    """True if hostname is a platform domain or a subdomain of one (finding 4)."""
+    return any(hostname == p or hostname.endswith("." + p) for p in config.PLATFORM_DENY_HOSTNAMES)
+
+
+def _protected_ips(deny_hosts: set[str], resolver: Resolver) -> set[IPAddress]:
+    """Resolve denied hostnames and platform hostnames to the addresses they protect (finding 2).
+
+    Raises if any name cannot be resolved: an unresolved deny entry means we cannot tell
+    which addresses it protects, so the caller must fail closed.
+    """
+    protected: set[IPAddress] = set()
+    for name in sorted(deny_hosts | set(config.PLATFORM_DENY_HOSTNAMES)):
+        try:
+            addresses = resolver(name)
+        except Exception as exc:
+            raise RuntimeError(f"could not resolve deny-list entry {name}: {exc}") from None
+        if not addresses:
+            raise RuntimeError(f"deny-list entry {name} did not resolve to any address")
+        for a in addresses:
+            ip = ipaddress.ip_address(a)
+            protected.add(ip.ipv4_mapped if ip.version == 6 and ip.ipv4_mapped else ip)
+    return protected
 
 
 def _split_entries(entries: Iterable[str]) -> tuple[list[IPNetwork], set[str]]:
@@ -229,12 +290,19 @@ def _check(scope: Scope, raw: str, now: datetime, resolver: Resolver) -> Decisio
     except InvalidTarget as exc:
         return Decision(str(raw), False, f"invalid target: {exc}")
 
-    allow_nets, allow_hosts = _split_entries(scope.allow)
+    allow_nets, _ = _split_entries(scope.allow)
     deny_nets, deny_hosts = _split_entries(scope.deny)
+
+    # Addresses behind denied hostnames and platform hostnames. Fails closed if one won't resolve.
+    protected = _protected_ips(deny_hosts, resolver)
 
     if target.kind == "cidr":
         net = ipaddress.ip_network(target.host)
         reason = _check_network(net, allow_nets, deny_nets)
+        if reason is None:
+            hit = next((ip for ip in protected if ip.version == net.version and ip in net), None)
+            if hit is not None:
+                reason = f"{net} contains {hit}, protected by a deny-list hostname"
         return Decision(raw, reason is None, reason or "in scope")
 
     try:
@@ -242,6 +310,8 @@ def _check(scope: Scope, raw: str, now: datetime, resolver: Resolver) -> Decisio
         hostname = None
     except ValueError:
         hostname = target.host
+        if _platform_hostname(hostname):
+            return Decision(raw, False, f"{hostname} belongs to the platform itself")
         if hostname in deny_hosts:
             return Decision(raw, False, f"{hostname} is in the scope deny-list")
         try:
@@ -257,15 +327,20 @@ def _check(scope: Scope, raw: str, now: datetime, resolver: Resolver) -> Decisio
     resolved_strs = tuple(str(ip) for ip in ips) if hostname else ()
 
     for ip in ips:
+        try:
+            _reject_embedded_ipv4(ip)  # a hostname resolving to e.g. a 6to4 address
+        except InvalidTarget as exc:
+            return Decision(raw, False, f"{ip}: {exc}", resolved_strs)
         reason = _denied_by(ip, deny_nets)
         if reason:
             return Decision(raw, False, reason, resolved_strs)
+        if ip in protected:
+            return Decision(raw, False, f"{ip} is protected by a deny-list hostname", resolved_strs)
 
-    hostname_allowed = hostname is not None and hostname in allow_hosts
-    if not hostname_allowed:
-        for ip in ips:
-            if not _in_networks(ip, allow_nets):
-                return Decision(raw, False, f"{ip} is not in the allow-list", resolved_strs)
+    # Strict IP policy (ADR-002): every address must be inside the allow-list, hostname or not.
+    for ip in ips:
+        if not _in_networks(ip, allow_nets):
+            return Decision(raw, False, f"{ip} is not in the allow-list", resolved_strs)
     return Decision(raw, True, "in scope", resolved_strs)
 
 
