@@ -11,12 +11,12 @@ Security requirements for building CybrX. They apply from Phase 1. Each requirem
 | ID | Requirement | Example |
 |---|---|---|
 | SBD-01 | Every target is checked against the group's allow-list and deny-list **before any tool runs**; out-of-scope targets are blocked and logged | Group allows `192.168.56.0/24`; target `8.8.8.8` → blocked, logged, scan continues without it |
-| SBD-02 | An always-deny list applies to every scan: cloud metadata (`169.254.169.254`, `fd00:ec2::254`), loopback, the platform's own IPs/hostnames | A "web app" target `http://169.254.169.254/latest/meta-data/` → blocked |
+| SBD-02 | An always-deny list applies to every scan: cloud metadata (`169.254.0.0/16`, `100.100.100.200`, `fd00:ec2::254`), loopback, the platform's own IPs/hostnames. In production the platform inventory (`CYBRX_PLATFORM_DENY` + `CYBRX_PLATFORM_DENY_HOSTNAMES`, listing **every** platform hostname and IP) is mandatory: without it every check fails closed | A "web app" target `http://169.254.169.254/latest/meta-data/` → blocked |
 | SBD-03 | Hostnames are resolved and the **resolved IPs** are scope-checked too (stops DNS tricks) | `evil.example` resolving to `127.0.0.1` → blocked |
 | SBD-04 | Scans run only between the scope's `starts_at` and `ends_at` | Scan launched after the engagement ended → refused |
-| SBD-05 | Every scope records who authorised it and when | `authorised_by = "J. Smith (IT Manager)"`, `authorised_at = 2026-11-16T20:00Z` |
+| SBD-05 | Every scope records who authorised it and when; an authorisation time in the future blocks the scan; a scope cannot be changed after it is created | `authorised_by = "J. Smith (IT Manager)"`, `authorised_at = 2026-11-16T20:00Z` |
 | SBD-06 | Fail closed: if the scope check errors, the scan does not run | DNS timeout during check → target skipped, not scanned |
-| SBD-07 | During development, scan **only** the isolated lab | Lab `192.168.56.0/24` only; no real customer or internet targets |
+| SBD-07 | During development, scan **only** the isolated lab. Enforced in code: `CYBRX_MODE=development` (the default) blocks anything outside `CYBRX_LAB_NETWORKS`, whatever a scope's allow-list says | Allow-list `198.51.100.77/32`, target `198.51.100.77` → blocked (lab boundary) |
 
 ## 2. Safe command execution
 
