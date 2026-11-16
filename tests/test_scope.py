@@ -65,13 +65,81 @@ def test_hostname_decision_keeps_resolved_ips(lab_scope):
     assert decision.resolved_ips == ("192.168.56.104",)
 
 
-def test_allow_listed_hostname_with_external_ip():
-    scope = Scope(
-        allow=["shop.customer.test"], deny=[],
+def make_scope(allow, deny) -> Scope:
+    return Scope(
+        allow=allow, deny=deny,
         starts_at=NOW - timedelta(days=1), ends_at=NOW + timedelta(days=1),
-        authorised_by="Customer IT manager", authorised_at=NOW,
+        authorised_by="Lab owner", authorised_at=NOW,
     )
-    assert check(scope, "https://shop.customer.test/login").allowed
+
+
+# --- Review findings (ChatGPT review of task 1.1) --------------------------------
+
+def test_finding1_hostname_allow_entries_are_refused():
+    # A hostname in the allow-list used to authorise ANY address it resolved to.
+    with pytest.raises(ValueError, match="IPs/CIDRs only"):
+        make_scope(["192.168.56.0/24", "approved.lab"], [])
+
+
+def test_finding1_hostname_resolving_outside_allow_list_blocked():
+    FAKE_DNS["approved.lab"] = ["198.51.100.77"]
+    decision = check(make_scope(["192.168.56.0/24"], []), "approved.lab")
+    assert not decision.allowed
+    assert "not in the allow-list" in decision.reason
+
+
+@pytest.mark.parametrize("target", ["blocked.lab", "192.168.56.101", "alias.lab",
+                                    "http://192.168.56.101/", "192.168.56.100/30"])
+def test_finding2_denied_hostname_protects_its_ip(target):
+    FAKE_DNS["blocked.lab"] = ["192.168.56.101"]
+    FAKE_DNS["alias.lab"] = ["192.168.56.101"]
+    decision = check(make_scope(["192.168.56.0/24"], ["blocked.lab"]), target)
+    assert not decision.allowed, target
+
+
+def test_finding2_unresolvable_deny_entry_fails_closed():
+    decision = check(make_scope(["192.168.56.0/24"], ["gone.lab"]), "192.168.56.104")
+    assert not decision.allowed
+    assert "deny-list entry gone.lab" in decision.reason
+
+
+@pytest.mark.parametrize("raw", [
+    "::ffff:127.0.0.1", "::ffff:127.0.0.1/128", "::ffff:169.254.169.254/128",
+    "::ffff:192.168.56.104", "::ffff:0:0/96", "http://[::ffff:127.0.0.1]/",
+    "2002:7f00:1::", "64:ff9b::7f00:1", "2001::1",   # 6to4, NAT64, Teredo
+])
+def test_finding3_ipv6_forms_embedding_ipv4_rejected(raw):
+    with pytest.raises(InvalidTarget, match="embeds an IPv4"):
+        parse_target(raw)
+
+
+def test_finding3_hostname_resolving_to_6to4_blocked(lab_scope):
+    FAKE_DNS["sixtofour.evil.test"] = ["2002:7f00:1::"]
+    assert not check(lab_scope, "sixtofour.evil.test").allowed
+
+
+@pytest.mark.parametrize("target, reason_part", [
+    ("cybrx.example", "platform itself"),
+    ("API.cybrx.example", "platform itself"),          # subdomain, any case
+    ("https://portal.cybrx.example/login", "platform itself"),
+    ("192.168.56.105", "protected"),                   # platform's IP, reached directly
+])
+def test_finding4_platform_hostnames_protected(lab_scope, monkeypatch, target, reason_part):
+    from cybrx import config
+    monkeypatch.setattr(config, "PLATFORM_DENY_HOSTNAMES", ("cybrx.example",))
+    FAKE_DNS["cybrx.example"] = ["192.168.56.105"]
+    decision = check(lab_scope, target)
+    assert not decision.allowed
+    assert reason_part in decision.reason
+
+
+def test_platform_hostname_is_not_a_suffix_match(lab_scope, monkeypatch):
+    # "notcybrx.example" must NOT be treated as part of "cybrx.example".
+    from cybrx import config
+    monkeypatch.setattr(config, "PLATFORM_DENY_HOSTNAMES", ("cybrx.example",))
+    FAKE_DNS["cybrx.example"] = ["192.168.56.105"]
+    FAKE_DNS["notcybrx.example"] = ["192.168.56.104"]
+    assert check(lab_scope, "notcybrx.example").allowed
 
 
 # --- Blocked: outside allow-list, deny-list, protected ranges (SBD-01, SBD-02) ---
@@ -84,7 +152,7 @@ def test_allow_listed_hostname_with_external_ip():
     ("http://169.254.169.254/latest/meta-data/", "always-deny"),
     ("127.0.0.1", "always-deny"),
     ("::1", "always-deny"),
-    ("::ffff:127.0.0.1", "always-deny"),                 # IPv4-mapped loopback
+    ("::ffff:127.0.0.1", "embeds an IPv4"),              # IPv4-mapped loopback
     ("fd00:ec2::254", "always-deny"),                    # AWS metadata IPv6
     ("192.168.57.0/24", "not fully inside"),             # next door to the lab, not allowed
     ("192.168.0.0/16", "deny-list"),                     # bigger than the lab, contains .1
@@ -102,7 +170,7 @@ def test_blocked_targets(lab_scope, target, reason_part):
 @pytest.mark.parametrize("target, reason_part", [
     ("rebind.evil.test", "always-deny"),          # hostname pointing at loopback
     ("metadata.evil.test", "always-deny"),        # hostname pointing at metadata
-    ("mapped.evil.test", "always-deny"),          # mapped loopback via DNS
+    ("mapped.evil.test", "always-deny"),          # mapped loopback via DNS, unwrapped to 127.0.0.1
     ("split.evil.test", "not in the allow-list"), # one good IP, one outside scope
     ("unknown.test", "could not resolve"),        # resolution error -> blocked
     ("empty.test", "did not resolve"),
