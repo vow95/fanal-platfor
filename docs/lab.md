@@ -39,3 +39,8 @@ Phase 1 scans should find at least these.
 ## Snapshots
 
 Take a snapshot of Kali and Metasploitable after Phase 0 passes (e.g. `clean-lab-2026-11-16`) and restore it if a scan breaks a target.
+
+## Run mode
+
+`CYBRX_MODE=development` is the default: the scope guard blocks everything outside `CYBRX_LAB_NETWORKS`
+(default `192.168.56.0/24`), whatever a scope allows (SBD-07). Never set `CYBRX_MODE=production` on the lab Kali.

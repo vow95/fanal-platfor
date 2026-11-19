@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
 from datetime import datetime, timedelta, timezone
@@ -265,3 +266,99 @@ def test_blocked_targets_are_logged_and_urls_redacted(lab_scope, caplog):
     records = [json.loads(r.message) for r in caplog.records]
     assert {r["event"] for r in records} == {"target_blocked"}
     assert all("SECRET" not in r["target"] for r in records)
+
+
+# --- Second review (ChatGPT re-test, revision 2) ---------------------------------
+
+def test_r2_platform_subdomain_ip_protected_when_listed(lab_scope, monkeypatch):
+    # Subdomains can't be discovered, so every platform hostname must be listed (config.py).
+    from cybrx import config
+    monkeypatch.setattr(config, "PLATFORM_DENY_HOSTNAMES", ("platform.lab", "api.platform.lab"))
+    FAKE_DNS["platform.lab"] = ["192.168.56.109"]
+    FAKE_DNS["api.platform.lab"] = ["192.168.56.102"]
+    FAKE_DNS["alias2.lab"] = ["192.168.56.102"]
+    for target in ("platform.lab", "api.platform.lab", "192.168.56.109",
+                   "192.168.56.102", "alias2.lab"):
+        assert not check(lab_scope, target).allowed, target
+
+
+@pytest.mark.parametrize("target", ["100.100.100.200", "http://100.100.100.200/latest/meta-data/"])
+def test_r2_finding_a_alibaba_metadata_blocked(target, monkeypatch):
+    from cybrx import config
+    monkeypatch.setattr(config, "MODE", "production")
+    monkeypatch.setattr(config, "PLATFORM_DENY_NETWORKS", (ipaddress.ip_network("203.0.113.250/32"),))
+    monkeypatch.setattr(config, "PLATFORM_DENY_HOSTNAMES", ("cybrx.example",))
+    FAKE_DNS["cybrx.example"] = ["203.0.113.250"]
+    decision = check(make_scope(["0.0.0.0/0"], []), target)   # even with allow-everything
+    assert not decision.allowed
+    assert "always-deny" in decision.reason
+
+
+@pytest.mark.parametrize("entry", ["::ffff:192.168.56.101/128", "::ffff:192.168.56.101",
+                                   "::c0a8:3865/128", "2002:c0a8:3865::/48"])
+def test_r2_finding_b_ipv6_spelled_ipv4_scope_entries_refused(entry):
+    with pytest.raises(ValueError, match="embeds an IPv4"):
+        make_scope(["192.168.56.0/24"], [entry])
+    with pytest.raises(ValueError, match="embeds an IPv4"):
+        make_scope([entry], [])
+
+
+@pytest.mark.parametrize("target", ["198.51.100.77", "198.51.100.77/32", "http://198.51.100.77/"])
+def test_r2_finding_c_development_lab_boundary_wins_over_allow_list(target):
+    decision = check(make_scope(["198.51.100.77/32"], []), target)
+    assert not decision.allowed
+    assert "lab boundary" in decision.reason
+
+
+def test_r2_finding_c_hostname_resolving_outside_lab_blocked():
+    FAKE_DNS["outside.test"] = ["198.51.100.77"]
+    decision = check(make_scope(["198.51.100.0/24"], []), "outside.test")
+    assert "lab boundary" in decision.reason
+
+
+def test_r2_finding_d_production_without_platform_inventory_fails_closed(monkeypatch):
+    from cybrx import config
+    monkeypatch.setattr(config, "MODE", "production")
+    monkeypatch.setattr(config, "PLATFORM_DENY_NETWORKS", ())
+    monkeypatch.setattr(config, "PLATFORM_DENY_HOSTNAMES", ())
+    decision = check(make_scope(["198.51.100.0/24"], []), "198.51.100.77")
+    assert not decision.allowed
+    assert "platform" in decision.reason.lower()
+
+
+def test_r2_future_authorisation_blocked():
+    scope = Scope(allow=["192.168.56.0/24"], deny=[], starts_at=NOW - timedelta(days=1),
+                  ends_at=NOW + timedelta(days=1), authorised_by="Lab owner",
+                  authorised_at=NOW + timedelta(minutes=15))
+    decision = check(scope, "192.168.56.104")
+    assert not decision.allowed
+    assert "future" in decision.reason
+
+
+def test_r2_scope_cannot_be_widened_after_creation(lab_scope):
+    assert isinstance(lab_scope.allow, tuple)
+    with pytest.raises(AttributeError):
+        lab_scope.allow.append("198.51.100.0/24")  # tuples have no append
+    with pytest.raises(Exception):
+        lab_scope.allow = ("0.0.0.0/0",)          # frozen dataclass
+
+
+def test_r2_url_credentials_never_logged(lab_scope, caplog):
+    with caplog.at_level(logging.WARNING, logger="cybrx.scope"):
+        check(lab_scope, "http://user:EXAMPLE_SECRET@192.168.56.104/?token=T0KEN")
+    text = caplog.text
+    assert "EXAMPLE_SECRET" not in text and "T0KEN" not in text and "user" not in text
+
+
+def test_r2_malformed_url_fails_closed_and_still_logs(lab_scope, caplog):
+    with caplog.at_level(logging.WARNING, logger="cybrx.scope"):
+        allowed, blocked = check_targets(lab_scope, ["http://[invalid", "192.168.56.104"],
+                                         now=NOW, resolver=fake_resolver)
+    assert len(blocked) == 1 and len(allowed) == 1
+    assert "target_blocked" in caplog.text
+
+
+def test_r2_single_check_target_logs_the_block(lab_scope, caplog):
+    with caplog.at_level(logging.WARNING, logger="cybrx.scope"):
+        check(lab_scope, "8.8.8.8")
+    assert "target_blocked" in caplog.text
