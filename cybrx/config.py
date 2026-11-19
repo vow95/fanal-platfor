@@ -61,6 +61,16 @@ LAB_NETWORKS: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...] = tuple(
     if n.strip()
 )
 
+# Lab addresses that are never scanned: the host machine and VirtualBox's DHCP server (docs/lab.md).
+LAB_DENY: tuple[str, ...] = tuple(
+    d.strip() for d in os.environ.get("CYBRX_LAB_DENY", "192.168.56.1,192.168.56.100").split(",") if d.strip()
+)
+
+# nmap limits (SBD-13).
+NMAP_BINARY: str = os.environ.get("CYBRX_NMAP_BINARY", "nmap")
+NMAP_MAX_RUNTIME_SECONDS: int = int(os.environ.get("CYBRX_NMAP_MAX_RUNTIME_SECONDS", "7200"))  # 2 hours
+NMAP_MAX_OUTPUT_BYTES: int = int(os.environ.get("CYBRX_NMAP_MAX_OUTPUT_BYTES", str(200 * 1024 * 1024)))
+
 # Largest CIDR a single target may cover (a /16 in IPv4). Bigger ranges are refused.
 MAX_CIDR_ADDRESSES: int = int(os.environ.get("CYBRX_MAX_CIDR_ADDRESSES", "65536"))
 

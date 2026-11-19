@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<nmaprun scanner="nmap" args="nmap -sV -n -T3 --host-timeout 30m -oX /tmp/cybrx-nmap/out.xml 192.168.56.104" start="1763325720" startstr="Mon Nov 16 15:42:00 2026" version="7.99" xmloutputversion="1.05">
+<scaninfo type="syn" protocol="tcp" numservices="1000" services="1-1000"/>
+<verbose level="0"/>
+<debugging level="0"/>
+<host starttime="1763325720" endtime="1763325732"><status state="up" reason="arp-response" reason_ttl="0"/>
+<address addr="192.168.56.104" addrtype="ipv4"/>
+<address addr="08:00:27:6C:43:BC" addrtype="mac" vendor="Oracle VirtualBox virtual NIC"/>
+<hostnames>
+</hostnames>
+<ports><extraports state="closed" count="977"><extrareasons reason="reset" count="977" proto="tcp" ports="1-1000"/></extraports>
+<port protocol="tcp" portid="21"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="ftp" product="vsftpd" version="2.3.4" method="probed" conf="10"><cpe>cpe:/a:vsftpd:vsftpd:2.3.4</cpe></service></port>
+<port protocol="tcp" portid="22"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="ssh" product="OpenSSH" version="4.7p1 Debian 8ubuntu1" extrainfo="protocol 2.0" method="probed" conf="10"><cpe>cpe:/a:openbsd:openssh:4.7p1</cpe><cpe>cpe:/o:linux:linux_kernel</cpe></service></port>
+<port protocol="tcp" portid="23"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="telnet" product="Linux telnetd" method="probed" conf="10"><cpe>cpe:/o:linux:linux_kernel</cpe></service></port>
+<port protocol="tcp" portid="25"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="smtp" product="Postfix smtpd" method="probed" conf="10"><cpe>cpe:/a:postfix:postfix</cpe></service></port>
+<port protocol="tcp" portid="53"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="domain" product="ISC BIND" version="9.4.2" method="probed" conf="10"><cpe>cpe:/a:isc:bind:9.4.2</cpe></service></port>
+<port protocol="tcp" portid="80"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="http" product="Apache httpd" version="2.2.8" extrainfo="(Ubuntu) DAV/2" method="probed" conf="10"><cpe>cpe:/a:apache:http_server:2.2.8</cpe></service></port>
+<port protocol="tcp" portid="111"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="rpcbind" version="2" extrainfo="RPC #100000" method="probed" conf="10"></service></port>
+<port protocol="tcp" portid="139"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="netbios-ssn" product="Samba smbd" version="3.X - 4.X" extrainfo="workgroup: WORKGROUP" method="probed" conf="10"><cpe>cpe:/a:samba:samba</cpe></service></port>
+<port protocol="tcp" portid="445"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="netbios-ssn" product="Samba smbd" version="3.X - 4.X" extrainfo="workgroup: WORKGROUP" method="probed" conf="10"><cpe>cpe:/a:samba:samba</cpe></service></port>
+<port protocol="tcp" portid="512"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="exec" product="netkit-rsh rexecd" method="probed" conf="10"></service></port>
+<port protocol="tcp" portid="513"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="login" product="OpenBSD or Solaris rlogind" method="probed" conf="10"></service></port>
+<port protocol="tcp" portid="514"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="shell" product="Netkit rshd" method="probed" conf="10"></service></port>
+<port protocol="tcp" portid="1099"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="java-rmi" product="GNU Classpath grmiregistry" method="probed" conf="10"></service></port>
+<port protocol="tcp" portid="1524"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="bindshell" product="Metasploitable root shell" method="probed" conf="10"></service></port>
+<port protocol="tcp" portid="2049"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="nfs" version="2-4" extrainfo="RPC #100003" method="probed" conf="10"></service></port>
+<port protocol="tcp" portid="2121"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="ftp" product="ProFTPD" version="1.3.1" method="probed" conf="10"><cpe>cpe:/a:proftpd:proftpd:1.3.1</cpe></service></port>
+<port protocol="tcp" portid="3306"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="mysql" product="MySQL" version="5.0.51a-3ubuntu5" method="probed" conf="10"><cpe>cpe:/a:mysql:mysql:5.0.51a-3ubuntu5</cpe></service></port>
+<port protocol="tcp" portid="5432"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="postgresql" product="PostgreSQL DB" version="8.3.0 - 8.3.7" method="probed" conf="10"><cpe>cpe:/a:postgresql:postgresql:8.3</cpe></service></port>
+<port protocol="tcp" portid="5900"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="vnc" product="VNC" extrainfo="protocol 3.3" method="probed" conf="10"></service></port>
+<port protocol="tcp" portid="6000"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="X11" extrainfo="access denied" method="probed" conf="10"></service></port>
+<port protocol="tcp" portid="6667"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="irc" product="UnrealIRCd" method="probed" conf="10"></service></port>
+<port protocol="tcp" portid="8009"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="ajp13" product="Apache Jserv" extrainfo="Protocol v1.3" method="probed" conf="10"></service></port>
+<port protocol="tcp" portid="8180"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="http" product="Apache Tomcat/Coyote JSP engine" version="1.1" method="probed" conf="10"><cpe>cpe:/a:apache:coyote_http_connector:1.1</cpe></service></port>
+</ports>
+<times srtt="180" rttvar="90" to="100000"/>
+</host>
+<runstats><finished time="1763325732" timestr="Mon Nov 16 15:42:12 2026" summary="Nmap done at Mon Nov 16 15:42:12 2026; 1 IP address (1 host up) scanned in 12.02 seconds" elapsed="12.02" exit="success"/><hosts up="1" down="0" total="1"/></runstats>
+</nmaprun>

@@ -44,7 +44,12 @@ cybrx/
 ## 3. Naming
 
 - Python: `snake_case` for files, functions, variables; `PascalCase` for classes; `UPPER_CASE` for constants.
-- One runner per tool, named `<tool>_runner.py`, exposing `run(targets, options) -> RawResult` and `parse(raw) -> list[...]`.
+- One runner per tool, named `<tool>_runner.py`, exposing `run(scope, targets, options) -> RawResult` and `parse(raw) -> <Tool>Run` (parsed hosts/results plus a `truncated` flag). `cybrx/runners/nmap_runner.py` is the reference implementation: every runner must
+  - call the scope guard itself and pass the tool only the IPs the guard checked (never hostnames; disable the tool's own DNS where it has one);
+  - build commands from validated options only, never free-form tool arguments;
+  - stop the tool on time limit, output limit or scope expiry, and report `stopped_reason`;
+  - write `scan_started` / `scan_finished` audit events with the exact command;
+  - be testable without the tool or a network (inject `popen`, `clock`, `sleep`).
 - Brand name only from `config.BRAND_NAME` — never typed into templates or code.
   *Example:* report title = `f"{BRAND_NAME} Vulnerability Report"`.
 
